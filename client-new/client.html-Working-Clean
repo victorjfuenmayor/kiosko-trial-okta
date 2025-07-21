@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Okta OIDC Client</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        button { margin-right: 10px; padding: 10px 15px; cursor: pointer; }
+        pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Okta OIDC Test Client</h1>
+    <div id="auth-buttons">
+        <button id="loginBtn">Login with Okta</button>
+        <button id="logoutBtn" disabled>Logout</button>
+    </div>
+    <button id="callApiBtn" disabled>Call API (Sensitive Transaction)</button>
+    <pre id="response"></pre>
+
+    <script src="https://global.oktacdn.com/okta-auth-js/7.5.0/okta-auth-js.min.js"></script>
+    <script>
+        // --- CONFIGURE THESE ---
+        const OKTA_ORG_URL = 'https://kiosko-trial.oktapreview.com'; // Your Okta Org URL
+        const OKTA_CLIENT_ID = '0oao2c0zc4MNK67Nb1d7'; // Client ID of your SPA app
+        const REDIRECT_URI = 'http://localhost:3001/client'; // Must match your Okta app config
+        const OKTA_AUTH_SERVER_ID = 'default'; // Or your custom auth server ID if you created one for ID token
+                                                // For access token, it needs to be the custom one configured in API.
+        const API_BASE_URL = 'http://localhost:3002'; // Or your Ngrok URL: 'https://xxxxxxxxxxxx.ngrok-free.app'
+        // --- END CONFIGURATION ---
+
+        const oktaAuth = new OktaAuth({
+            issuer: `${OKTA_ORG_URL}/oauth2/${OKTA_AUTH_SERVER_ID}`,
+            clientId: OKTA_CLIENT_ID,
+            redirectUri: REDIRECT_URI,
+            scopes: ['openid', 'profile', 'email', 'transactions:write'], // Add your custom API scope
+            pkce: true,
+            tokenManager: {
+                autoRenew: true, // Automatically renews tokens when they expire
+                expireEarlySeconds: 300 // Renew tokens 5 minutes before they expire
+            }
+        });
+
+        let accessToken = null;
+        let userClaims = null; // To store user information
+
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const callApiBtn = document.getElementById('callApiBtn');
+        const responsePre = document.getElementById('response');
+
+        function updateUI(isAuthenticated) {
+            if (isAuthenticated) {
+                loginBtn.disabled = true;
+                logoutBtn.disabled = false;
+                callApiBtn.disabled = false;
+                responsePre.textContent = userClaims ? `Logged in as: ${userClaims.email || userClaims.sub}\nAccess Token acquired.` : 'Logged in successfully! Access Token acquired.';
+            } else {
+                loginBtn.disabled = false;
+                logoutBtn.disabled = true;
+                callApiBtn.disabled = true;
+                responsePre.textContent = 'Please log in.';
+            }
+        }
+
+        async function handleLogin() {
+            try {
+                // Check if there are existing tokens in storage
+                const tokens = await oktaAuth.tokenManager.getTokens();
+                if (tokens.accessToken && tokens.idToken) {
+                    accessToken = tokens.accessToken.accessToken;
+                    userClaims = await oktaAuth.getUser();
+                    console.log('Existing access token found:', accessToken);
+                    console.log('User claims:', userClaims);
+                    updateUI(true);
+                } else {
+                    // Redirect to Okta for login
+                    await oktaAuth.signInWithRedirect();
+                }
+            } catch (error) {
+                console.error('Login process failed or no active session:', error);
+                responsePre.textContent = `Login failed or no active session: ${error.message}`;
+                updateUI(false);
+            }
+        }
+
+async function handleLogout() {
+            try {
+                // Clear the local session and redirect to Okta for full logout
+                await oktaAuth.signOut({
+                    postLogoutRedirectUri: REDIRECT_URI, // Redirect user back to your app after logout
+                    clearTokensBeforeRedirect: true      // <-- ADD THIS LINE
+                });
+                accessToken = null;
+                userClaims = null;
+                updateUI(false);
+                responsePre.textContent = 'Logged out successfully.';
+                console.log('User logged out.');
+            } catch (error) {
+                console.error('Logout failed:', error);
+                responsePre.textContent = `Logout failed: ${error.message}`;
+            }
+        }
+
+
+        loginBtn.addEventListener('click', handleLogin);
+        logoutBtn.addEventListener('click', handleLogout);
+
+        callApiBtn.addEventListener('click', async () => {
+            if (!accessToken) {
+                responsePre.textContent = 'Please log in first.';
+                return;
+            }
+
+            // --- Dynamic Variables from the Client ---
+            let hostname = window.location.hostname;
+            let ipAddress = 'unknown'; // Will be better observed by the server
+
+            // Attempt to get public IP from client (optional, and may not work for all users/networks)
+            try {
+                const ipResponse = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipResponse.json();
+                ipAddress = ipData.ip;
+            } catch (error) {
+                console.warn("Could not get public IP from client:", error);
+            }
+            // --- End Dynamic Variables from the Client ---
+
+            const transactionData = {
+                productId: 'widget-y-789',
+                quantity: 3,
+                clientContext: {
+                    hostname: hostname,
+                    ipAddress: ipAddress,
+                    userAgent: navigator.userAgent // Adding user agent for more context
+                },
+                details: 'This is a test sensitive transaction'
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/perform-sensitive-transaction`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify(transactionData)
+                });
+
+                const result = await response.json();
+                responsePre.textContent = JSON.stringify(result, null, 2);
+
+                if (!response.ok) {
+                    console.error('API call failed:', response.status, result);
+                    alert('API Call Failed!');
+                } else {
+                    console.log('API Call Successful:', result);
+                    alert('API Call Successful!');
+                }
+            } catch (error) {
+                console.error('Error calling API:', error);
+                responsePre.textContent = `Error calling API: ${error.message}`;
+                alert('An unexpected error occurred during API call.');
+            }
+        });
+
+        // Initialize on page load: check for existing tokens or handle redirect
+        async function init() {
+            try {
+                // handleRedirect will process the tokens if it's a redirect from Okta
+                const tokens = await oktaAuth.handleRedirect();
+                if (tokens && tokens.accessToken) {
+                    accessToken = tokens.accessToken.accessToken;
+                    userClaims = await oktaAuth.getUser(); // Get user claims after successful login
+                    console.log('Logged in via redirect. Access Token:', accessToken);
+                    console.log('User claims:', userClaims);
+                    updateUI(true);
+                } else {
+                    // If not a redirect, check if tokens exist in storage
+                    const existingTokens = await oktaAuth.tokenManager.getTokens();
+                    if (existingTokens.accessToken && existingTokens.idToken) {
+                        accessToken = existingTokens.accessToken.accessToken;
+                        userClaims = await oktaAuth.getUser();
+                        console.log('Existing session found. Access Token:', accessToken);
+                        console.log('User claims:', userClaims);
+                        updateUI(true);
+                    } else {
+                        updateUI(false); // No active session
+                    }
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                responsePre.textContent = `Initialization error: ${error.message}`;
+                updateUI(false);
+            }
+        }
+
+        // Call the initialization function when the page loads
+        init();
+
+    </script>
+</body>
+</html>

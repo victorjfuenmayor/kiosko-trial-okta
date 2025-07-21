@@ -1,0 +1,127 @@
+// index.js (or app.js)
+const express = require('express');
+const bodyParser = require('body-parser');
+const app = express();
+const port = 3000;
+
+// Middleware to parse JSON request bodies
+app.use(bodyParser.json());
+
+// --- Flow 1: Helper Function (simulating "list flow - Parse components") ---
+// Purpose: This function mimics the Okta Workflow helper flow.
+// It takes a string like "key=value" and the current accumulated 'memo' object.
+// It aims to extract the 'value' for "storeid", "hostname", and "hostIP"
+// and accumulate them into the memo object.
+function parseComponents(currentItem, memo = {}) {
+    // Okta Workflow's 'Split' card with delimiter '='
+    const parts = currentItem.split('=');
+
+    // Extract the key (item at index 0) and value (item at index 1)
+    const key = parts[0];
+    const value = parts[1] || ""; // Handle cases where there might be no value after '='
+
+    // Accumulate the key-value pairs into the memo object
+    if (key === "storeid" || key === "hostname" || key === "hostIP") {
+        memo[key] = value;
+    }
+    return memo; // Always return the updated memo object
+}
+
+// --- Flow 2: Main API Endpoint (simulating "Demo Inline Hook") ---
+// Purpose: This is the primary API endpoint that would receive the
+// Okta Token/Claims Inline Hook payload.
+app.post('/okta-inline-hook', (req, res) => {
+    const hookPayload = req.body;
+
+    // Simulate 'http:accept' card: The incoming request body is 'hookPayload'.
+
+    // Simulate 'object:expand' card: Extracting data.context.request.url.value
+    let rawUrl = '';
+    try {
+        rawUrl = hookPayload.data.context.request.url.value;
+    } catch (error) {
+        console.error("Could not extract URL from payload:", error);
+        // Respond with an error if the expected structure is not found
+        return res.status(400).json({
+            commands: [],
+            status: "ERROR",
+            error: "Invalid payload format: 'data.context.request.url.value' missing."
+        });
+    }
+
+    // Simulate 'url:parse' card: Parse the URL string
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(rawUrl);
+    } catch (error) {
+        console.error("Could not parse URL:", error);
+        return res.status(400).json({
+            commands: [],
+            status: "ERROR",
+            error: "Invalid URL provided in payload."
+        });
+    }
+    const queryString = parsedUrl.searchParams.toString(); // Get query string (e.g., "storeid=123&param2=value2")
+
+    // Simulate 'string:split' card: Split the query string by '&'
+    const queryParameters = queryString.split('&').filter(param => param.length > 0);
+
+    // Simulate 'list:reduce' card: Iterate through each "key=value" string
+    // and use the 'parseComponents' helper to find the desired parameters.
+    // Initialize memo as an empty object
+    let extractedParams = {};
+    queryParameters.forEach(param => {
+        // The result of each helper flow call becomes the 'memo' for the next iteration
+        extractedParams = parseComponents(param, extractedParams);
+    });
+
+    const finalStoreId = extractedParams.storeid || "";
+    const finalHostname = extractedParams.hostname || "";
+    const finalHostIP = extractedParams.hostIP || "";
+
+
+    // Simulate 'string:compose' card: Construct the Okta Inline Hook response JSON.
+    // This structure is specific to Okta Token/Claims Hooks.
+    const responseBody = {
+        commands: [
+            {
+                type: "com.okta.identity.patch",
+                value: [
+                    {
+                        op: "add",
+                        path: "/claims/hookdemo",
+                        value: "Hook rocks!" // Static value from workflow's compose card
+                    }
+                ]
+            },
+            {
+                type: "com.okta.access.patch",
+                value: [
+                    {
+                        op: "add",
+                        path: "/claims/storeid",
+                        value: finalStoreId // Dynamic value extracted by the workflow logic
+                    },
+                    {
+                        op: "add",
+                        path: "/claims/hostname", // Add hostname claim
+                        value: finalHostname
+                    },
+                    {
+                        op: "add",
+                        path: "/claims/hostIP", // Add hostIP claim
+                        value: finalHostIP
+                    }
+                ]
+            }
+        ]
+    };
+
+    // Simulate 'control:returnRaw' card: Send the constructed JSON response.
+    res.status(200).json(responseBody);
+});
+
+// Start the server
+app.listen(port, () => {
+    console.log(`API service listening at http://localhost:${port}`);
+});

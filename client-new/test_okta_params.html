@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Okta Extra Params Test - FINAL FIX</title>
+    <style>
+        body { font-family: sans-serif; margin: 50px; text-align: center; }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; }
+        pre { background-color: #f4f4f4; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: left; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <h1>Okta Extra Params Test - FINAL FIX</h1>
+    <p>Click the button below to initiate a login with custom extra parameters.</p>
+    <button id="testLoginBtn">Initiate Login with Extra Params</button>
+    <pre id="responseOutput"></pre>
+
+    <script src="https://global.oktacdn.com/okta-auth-js/7.5.0/okta-auth-js.min.js"></script>
+    <script>
+        // --- CONFIGURE THESE (MUST MATCH YOUR OKTA APP) ---
+        const OKTA_ORG_URL = 'https://kiosko-trial.oktapreview.com'; // Your Okta Org URL
+        const OKTA_CLIENT_ID = '0oao2c0zc4MNK67Nb1d7'; // Client ID of your SPA app
+        // IMPORTANT: Must match this file's URL and your Okta app config!
+        const REDIRECT_URI = 'http://localhost:3001/test_okta_params.html';
+        const OKTA_AUTH_SERVER_ID = 'default';
+        // --- END CONFIGURATION ---
+
+        const oktaAuth = new OktaAuth({
+            issuer: `${OKTA_ORG_URL}/oauth2/${OKTA_AUTH_SERVER_ID}`,
+            clientId: OKTA_CLIENT_ID,
+            redirectUri: REDIRECT_URI,
+            scopes: ['openid', 'profile', 'email'],
+            pkce: true
+        });
+
+        const testLoginBtn = document.getElementById('testLoginBtn');
+        const responseOutput = document.getElementById('responseOutput');
+
+        console.log('Script loaded. Attempting to get button element...');
+        console.log('testLoginBtn element:', testLoginBtn); 
+
+        if (testLoginBtn) {
+            console.log('Attaching click event listener to testLoginBtn.');
+            testLoginBtn.addEventListener('click', handleTransactionLogin);
+        } else {
+            console.error('ERROR: testLoginBtn element not found! Cannot attach event listener.');
+        }
+
+        async function initTest() {
+            try {
+                const tokens = await oktaAuth.handleRedirect();
+                if (tokens && tokens.accessToken) {
+                    const userClaims = await oktaAuth.getUser();
+                    responseOutput.textContent = `Login successful! Token acquired. User: ${userClaims.email || userClaims.sub}\n\nFull Access Token (for Postman): ${tokens.accessToken.accessToken}\n\nUser Claims: ${JSON.stringify(userClaims, null, 2)}`;
+                    console.log('Login successful. Full Access Token:', tokens.accessToken.accessToken);
+                    console.log('User Claims:', userClaims);
+                } else {
+                    responseOutput.textContent = 'Ready to initiate login with extra parameters.';
+                }
+            } catch (error) {
+                console.error('Initialization/Redirect handling error:', error);
+                responseOutput.textContent = `Error: ${error.message}. Check console for details.`;
+            }
+        }
+
+        async function handleTransactionLogin() {
+            console.log('>>> handleTransactionLogin function has been entered. <<<');
+            responseOutput.textContent = 'Initiating login... Check console and network tab.';
+            try {
+                const uniqueId = Date.now(); 
+                const customParamStoreId = "STORE_" + uniqueId;
+                const customParamTest = "TEST_VALUE_" + uniqueId;
+                const customParamHostname = "HOST_" + window.location.hostname.replace('.', '_');
+                const customParamHostIP = "192.168.5.1";
+
+                // --- THE CRUCIAL CHANGE: Nesting custom parameters under 'extraParams' ---
+                const signInOptions = {
+                    extraParams: { // <--- This is the key change from your Angular code!
+                        storeid: customParamStoreId,
+                        testParam: customParamTest,
+                        authHostname: customParamHostname,
+                        authHostIP: customParamHostIP
+                    }
+                };
+
+                console.log('handleTransactionLogin: Options object passed to signInWithRedirect:', signInOptions);
+                
+                // This console.log shows the URL string that your JavaScript is attempting to construct.
+                // It should now correctly reflect the nested extraParams.
+                const constructedUrl = `${OKTA_ORG_URL}/oauth2/${OKTA_AUTH_SERVER_ID}/v1/authorize?` + new URLSearchParams({
+                    client_id: OKTA_CLIENT_ID,
+                    redirect_uri: REDIRECT_URI,
+                    response_type: 'code', 
+                    scope: oktaAuth.options.scopes.join(' '),
+                    code_challenge_method: 'S256', 
+                    code_challenge: 'DEBUG_CODE_CHALLENGE', // Placeholder
+                    state: 'DEBUG_STATE', // Placeholder
+                    // When building manually for log, we need to explicitly extract from nested 'extraParams'
+                    // For the actual signInWithRedirect call below, okta-auth-js handles this nesting.
+                    ...signInOptions.extraParams 
+                }).toString();
+                console.log('handleTransactionLogin: Hypothetically constructed full Authorize URL:', constructedUrl);
+
+
+                await oktaAuth.signInWithRedirect(signInOptions); // okta-auth-js will correctly extract from 'extraParams'
+
+                console.log('Redirect should have occurred.');
+
+            } catch (error) {
+                console.error('Error during signInWithRedirect:', error);
+                responseOutput.textContent = `Login initiation failed: ${error.message}`;
+                updateUI(false);
+            }
+        }
+
+        initTest();
+    </script>
+</body>
+</html>

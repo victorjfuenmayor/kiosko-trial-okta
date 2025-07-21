@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CompuCaja by Kiosko</title> <!-- Updated Title -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            background: linear-gradient(to right bottom, #a7b2c9, #e0e7f3); /* Subtle gradient background */
+            min-height: 100vh; /* Ensure full height for gradient */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+        /* Custom modal styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-2xl border border-gray-200"> <!-- Nicer shadow and rounded corners -->
+        <h1 class="text-4xl font-extrabold mb-8 text-gray-900 text-center">CompuCaja by Kiosko</h1> <!-- Updated Heading -->
+
+        <!-- Kiosko Logo -->
+        <div class="flex justify-center mb-8">
+            <img src="https://portalproveedores.mikiosko.mx/media/logos/logo-kiosko.png" alt="Kiosko Logo" class="w-48 h-auto rounded-lg shadow-md" onerror="this.onerror=null;this.src='https://placehold.co/192x64/cccccc/333333?text=Logo+Error';">
+        </div>
+
+        <!-- Store Selection Dropdown -->
+        <div class="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <label for="storeSelect" class="block text-gray-700 text-base font-semibold mb-2">Select Store for this Client Instance:</label>
+            <select id="storeSelect" class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white border-gray-300">
+                <option value="Tienda 1">Tienda 1</option>
+                <option value="Tienda 2">Tienda 2</option>
+                <option value="Tienda 3">Tienda 3</option>
+                <option value="Tienda 4">Tienda 4</option>
+                <option value="Tienda 5">Tienda 5</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-2">This simulates which store location this client app is deployed at.</p>
+        </div>
+
+        <div id="auth-buttons" class="flex flex-wrap gap-4 mb-6 justify-center"> <!-- Centered buttons -->
+            <button id="loginBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">Login with Okta</button>
+            <button id="logoutBtn" disabled class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75">Logout</button>
+        </div>
+
+        <div class="flex flex-wrap gap-4 mb-6 justify-center"> <!-- Centered buttons -->
+            <button id="callApiBtn" disabled class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">Call API (Current Session)</button>
+            <button id="transactionLoginBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-75">Login for Transaction Token (with Extra Params)</button>
+        </div>
+
+        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-inner"> <!-- Added inner shadow -->
+            <h2 class="text-xl font-semibold mb-2 text-gray-700">Response/Status: <span id="currentStoreDisplay" class="text-blue-600 font-medium"></span></h2>
+            <pre id="response" class="text-gray-900 text-sm p-3 rounded-md bg-white border border-gray-200 overflow-auto"></pre> <!-- Prettier pre tag -->
+        </div>
+    </div>
+
+    <!-- Custom Modal for Alerts -->
+    <div id="customAlertModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="document.getElementById('customAlertModal').style.display='none'; sessionStorage.removeItem('persistedAlertMessage');">&times;</span>
+            <p id="customAlertMessage" class="text-lg font-medium text-gray-800"></p>
+            <button class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg" onclick="document.getElementById('customAlertModal').style.display='none'; sessionStorage.removeItem('persistedAlertMessage');">OK</button>
+        </div>
+    </div>
+
+    <script src="https://global.oktacdn.com/okta-auth-js/7.5.0/okta-auth-js.min.js"></script>
+    <script>
+        // --- CONFIGURE THESE ---
+        const OKTA_ORG_URL = 'https://kiosko-trial.oktapreview.com'; // Your Okta Org URL
+        const OKTA_CLIENT_ID = '0oao2c0zc4MNK67Nb1d7'; // Client ID of your SPA app
+        const REDIRECT_URI = 'http://localhost:3001/client'; // Must match your Okta app config
+        const OKTA_AUTH_SERVER_ID = 'default';
+        const API_BASE_URL = 'http://localhost:3002';
+        const STORE_KEY_SESSION_STORAGE = 'selectedStoreForClient'; // Key for session storage
+        const PERSISTED_ALERT_KEY = 'persistedAlertMessage'; // Key for persisted alert message
+        // --- END CONFIGURATION ---
+
+        // Initial OktaAuth configuration with 'groups' scope
+        const oktaAuth = new OktaAuth({
+            issuer: `${OKTA_ORG_URL}/oauth2/${OKTA_AUTH_SERVER_ID}`,
+            clientId: OKTA_CLIENT_ID,
+            redirectUri: REDIRECT_URI,
+            scopes: ['openid', 'profile', 'email', 'offline_access', 'groups'], // Added 'groups' scope
+            pkce: true,
+            tokenManager: {
+                autoRenew: true,
+                expireEarlySeconds: 300
+            }
+        });
+
+        let accessToken = null;
+        let userClaims = null;
+
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const callApiBtn = document.getElementById('callApiBtn');
+        const transactionLoginBtn = document.getElementById('transactionLoginBtn');
+        const responsePre = document.getElementById('response');
+        const customAlertModal = document.getElementById('customAlertModal');
+        const customAlertMessage = document.getElementById('customAlertMessage');
+        const storeSelect = document.getElementById('storeSelect'); // Reference to the dropdown
+        const currentStoreDisplay = document.getElementById('currentStoreDisplay'); // Element to display selected store
+
+        // Function to show custom alert modal
+        function showCustomAlert(message, persist = false) {
+            customAlertMessage.textContent = message;
+            customAlertModal.style.display = 'flex'; // Use flex to center
+            if (persist) {
+                sessionStorage.setItem(PERSISTED_ALERT_KEY, message);
+            }
+        }
+
+        // Function to save selected store to session storage
+        function saveSelectedStore() {
+            sessionStorage.setItem(STORE_KEY_SESSION_STORAGE, storeSelect.value);
+            console.log(`Saved selected store to session storage: ${storeSelect.value}`);
+        }
+
+        // Function to load selected store from session storage
+        function loadSelectedStore() {
+            const savedStore = sessionStorage.getItem(STORE_KEY_SESSION_STORAGE);
+            if (savedStore) {
+                storeSelect.value = savedStore;
+                console.log(`Loaded selected store from session storage: ${savedStore}`);
+            }
+        }
+
+        function updateUI(isAuthenticated, message = '') {
+            const selectedStore = storeSelect.value;
+            currentStoreDisplay.textContent = `(Client for ${selectedStore})`;
+
+            if (isAuthenticated) {
+                loginBtn.disabled = true;
+                logoutBtn.disabled = false;
+                callApiBtn.disabled = false;
+                transactionLoginBtn.disabled = false;
+                storeSelect.disabled = true; // Disable dropdown when logged in
+                responsePre.textContent = userClaims ? `Logged in as: ${userClaims.email || userClaims.sub}\nClient session active.\n\nUser claims: ${JSON.stringify(userClaims, null, 2)}` : 'Logged in successfully! Client session active.';
+                if (message) {
+                    responsePre.textContent = message + '\n\n' + responsePre.textContent;
+                }
+            } else {
+                loginBtn.disabled = false;
+                logoutBtn.disabled = true;
+                callApiBtn.disabled = true;
+                transactionLoginBtn.disabled = false;
+                storeSelect.disabled = false; // Enable dropdown when logged out
+                responsePre.textContent = message || 'Please log in.';
+            }
+        }
+
+        // Function to check user group membership
+        function isUserAuthorizedForStore(userGroups, expectedStoreGroup) {
+            if (!userGroups || !Array.isArray(userGroups)) {
+                return false; // No groups or invalid format
+            }
+            return userGroups.includes(expectedStoreGroup);
+        }
+
+        async function processAuthenticationResult() {
+            try {
+                const tokens = await oktaAuth.tokenManager.getTokens();
+                if (tokens.accessToken && tokens.idToken) {
+                    accessToken = tokens.accessToken.accessToken;
+                    userClaims = await oktaAuth.getUser(); // This fetches userinfo, which should include groups if configured
+
+                    console.log('Authentication successful. User claims:', userClaims);
+
+                    const selectedStore = storeSelect.value; // Get the currently selected store from the dropdown
+
+                    if (userClaims && userClaims.groups) {
+                        if (isUserAuthorizedForStore(userClaims.groups, selectedStore)) {
+                            console.log(`User is a member of '${selectedStore}'. Access granted.`);
+                            updateUI(true);
+                        } else {
+                            console.warn(`User is NOT a member of '${selectedStore}'. Access denied.`);
+                            showCustomAlert(`Access Denied: You are not authorized for this store (${selectedStore}). Your groups: ${userClaims.groups.join(', ')}`, true); // Persist this alert
+                            // Force logout to prevent unauthorized access
+                            await oktaAuth.signOut({
+                                postLogoutRedirectUri: REDIRECT_URI,
+                                clearTokensBeforeRedirect: true
+                            });
+                            // Removed updateUI(false) here to prevent conflicting message in responsePre
+                            // The modal is now the primary persistent message.
+                        }
+                    } else {
+                        console.warn('User claims do not contain group information. Please ensure "groups" scope is requested and configured in Okta.');
+                        showCustomAlert('Authentication Error: Group information missing. Please ensure "groups" scope is requested and configured in Okta.', true); // Persist this alert
+                        await oktaAuth.signOut({
+                            postLogoutRedirectUri: REDIRECT_URI,
+                            clearTokensBeforeRedirect: true
+                        });
+                        // Removed updateUI(false) here to prevent conflicting message in responsePre
+                        // The modal is now the primary persistent message.
+                    }
+                } else {
+                    updateUI(false); // No tokens found, not authenticated
+                }
+            } catch (error) {
+                console.error('Error processing authentication result:', error);
+                showCustomAlert(`Authentication Error: ${error.message}`);
+                updateUI(false, `Authentication Error: ${error.message}`);
+            }
+        }
+
+        async function handleLogin() {
+            try {
+                saveSelectedStore(); // Save selected store before redirect
+                // For standard login, use the default scopes configured in oktaAuth instance (which now includes 'groups')
+                await oktaAuth.signInWithRedirect();
+            } catch (error) {
+                console.error('Login process failed or no active session:', error);
+                showCustomAlert(`Login failed: ${error.message}`);
+                updateUI(false, `Login failed: ${error.message}`);
+            }
+        }
+
+        async function handleLogout() {
+            try {
+                await oktaAuth.signOut({
+                    postLogoutRedirectUri: REDIRECT_URI,
+                    clearTokensBeforeRedirect: true
+                });
+                accessToken = null;
+                userClaims = null;
+                // Clear the saved store from session storage on logout
+                sessionStorage.removeItem(STORE_KEY_SESSION_STORAGE);
+                // Also clear any persisted alert message on explicit logout
+                sessionStorage.removeItem(PERSISTED_ALERT_KEY);
+                updateUI(false, 'Logged out successfully.');
+                console.log('User logged out.');
+            } catch (error) {
+                console.error('Logout failed:', error);
+                showCustomAlert(`Logout failed: ${error.message}`);
+                updateUI(false, `Logout failed: ${error.message}`);
+            }
+        }
+
+        async function handleTransactionLogin() {
+            console.log('>>> handleTransactionLogin function has been entered. <<<');
+            responsePre.textContent = 'Initiating login for transaction token with extra parameters...';
+            try {
+                saveSelectedStore(); // Save selected store before redirect
+                const customParamStoreId = "STORE_" + Date.now();
+                const customParamTest = "TEST_VALUE_" + Date.now();
+                const customParamHostname = "HOST_" + window.location.hostname.replace('.', '_');
+                const customParamHostIP = "192.168.5.45";
+
+                const signInOptions = {
+                    // Explicitly request 'transactions:write' and 'groups' here
+                    scopes: ['openid', 'profile', 'email', 'transactions:write', 'groups'],
+                    extraParams: {
+                        StoreID: customParamStoreId,
+                        StoreNumber: customParamTest,
+                        Hostname: customParamHostname,
+                        HostIP: customParamHostIP
+                    }
+                };
+
+                console.log('handleTransactionLogin: Options object passed to signInWithRedirect:', signInOptions);
+                await oktaAuth.signInWithRedirect(signInOptions);
+
+                console.log('Redirect should have occurred.');
+
+            } catch (error) {
+                console.error('Error during signInWithRedirect:', error);
+                showCustomAlert(`Transaction Login failed: ${error.message}`);
+                updateUI(false, `Transaction Login failed: ${error.message}`);
+            }
+        }
+
+        loginBtn.addEventListener('click', handleLogin);
+        logoutBtn.addEventListener('click', handleLogout);
+        transactionLoginBtn.addEventListener('click', handleTransactionLogin);
+
+        callApiBtn.addEventListener('click', async () => {
+            let currentAccessToken = null;
+            responsePre.textContent = 'Preparing for sensitive transaction...';
+
+            try {
+                console.log('Attempting to get access token for API call. Will renew if needed...');
+                currentAccessToken = await oktaAuth.getAccessToken();
+
+                if (!currentAccessToken) {
+                    responsePre.textContent = 'No active access token. Please log in first.';
+                    updateUI(false);
+                    return;
+                }
+                accessToken = currentAccessToken;
+                console.log('Using access token for API call (may be existing or silently renewed):', accessToken.substring(0, 30) + '...');
+                console.log('Full Access Token for inspection:', accessToken);
+
+            } catch (error) {
+                console.error('Failed to get or renew access token:', error);
+                responsePre.textContent = `Failed to get or renew access token: ${error.message}`;
+                showCustomAlert('Authentication required. Please log in again.');
+                updateUI(false);
+                return;
+            }
+
+            let hostname = window.location.hostname;
+            let ipAddress = 'unknown';
+
+            try {
+                const ipResponse = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipResponse.json();
+                ipAddress = ipData.ip;
+            } catch (error) {
+                console.warn("Could not get public IP from client:", error);
+            }
+
+            const transactionContextParams = {
+                Item: "15151515",
+                Cantidad: "3",
+                descripcion: "XXXX"
+            };
+
+            const transactionData = {
+                productId: 'widget-y-789',
+                quantity: 3,
+                clientContext: {
+                    userAgent: navigator.userAgent,
+                    ...transactionContextParams
+                },
+                details: 'This is a test sensitive transaction'
+            };
+
+            console.log('Transaction Data being sent to API:', transactionData);
+
+            try {
+                console.log('Sending transaction request to API...');
+                const response = await fetch(`${API_BASE_URL}/api/perform-sensitive-transaction`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAccessToken}`
+                    },
+                    body: JSON.stringify(transactionData)
+                });
+
+                const result = await response.json();
+                responsePre.textContent = JSON.stringify(result, null, 2);
+
+                if (!response.ok) {
+                    console.error('API call failed:', response.status, result);
+                    showCustomAlert('API Call Failed!');
+                } else {
+                    console.log('API Call Successful:', result);
+                    showCustomAlert('API Call Successful!');
+                }
+            } catch (error) {
+                console.error('Error calling API:', error);
+                responsePre.textContent = `Error calling API: ${error.message}`;
+                showCustomAlert('An unexpected error occurred during API call.');
+            }
+        });
+
+        async function init() {
+            // Load selected store from session storage first and update UI immediately
+            loadSelectedStore();
+            updateUI(false); // Update UI to reflect the loaded/initial store, ensuring dropdown is enabled
+
+            // Add event listener for dropdown change
+            storeSelect.addEventListener('change', () => {
+                // If logged in, force logout when store changes to ensure re-authentication for new store
+                if (logoutBtn.disabled === false) { // If logout button is enabled, user is logged in
+                    handleLogout();
+                    showCustomAlert(`Store changed to ${storeSelect.value}. Please log in again.`);
+                }
+            });
+
+            try {
+                // Check if there's a redirect response to handle
+                const originalUri = window.location.href;
+                if (originalUri.includes('code=') || originalUri.includes('state=')) {
+                    await oktaAuth.handleRedirect();
+                    // After handling redirect, clean the URL to prevent re-processing
+                    window.history.replaceState({}, document.title, REDIRECT_URI);
+                }
+                
+                // Process authentication result (either from redirect or existing session)
+                await processAuthenticationResult();
+
+                // Check for persisted alert message after auth processing
+                const persistedAlert = sessionStorage.getItem(PERSISTED_ALERT_KEY);
+                if (persistedAlert) {
+                    showCustomAlert(persistedAlert); // Display the persisted alert
+                    // IMPORTANT: Removed sessionStorage.removeItem(PERSISTED_ALERT_KEY) from here.
+                    // It will now only be cleared by the modal's OK/close buttons.
+                }
+
+            } catch (error) {
+                console.error('Initialization error:', error);
+                showCustomAlert(`Initialization error: ${error.message}`);
+                updateUI(false, `Initialization error: ${error.message}`);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
